@@ -94,9 +94,27 @@ button:focus-visible, select:focus-visible { outline: 2px solid #22d3ee; outline
 .live-panel { min-height: 0; display: flex; flex-direction: column; }
 .live-frame-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #04090e; display: flex; align-items: center; }
 .live-frame { width: 100%; height: 100%; object-fit: fill; image-rendering: auto; }
+.encoder-grid { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.encoder-grid span { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed rgba(207, 250, 254, .18); transition: bottom .11s linear; }
+.encoder-grid span::before, .encoder-grid span::after { content: ""; position: absolute; top: -2px; width: 18px; border-top: 3px solid rgba(103, 232, 249, .8); }
+.encoder-grid span::before { left: 0; }
+.encoder-grid span::after { right: 0; }
+.encoder-grid b { position: absolute; right: 44px; top: -8px; padding: 1px 4px; color: #cffafe; background: rgba(3, 12, 18, .7); font: 700 8px ui-monospace, monospace; }
+.web-running .encoder-grid span::before, .web-running .encoder-grid span::after { box-shadow: 0 0 8px #22d3ee; }
 .scanline { position: absolute; left: 0; right: 0; bottom: 4px; height: 2px; background: rgba(34, 211, 238, .7); box-shadow: 0 0 12px #22d3ee; pointer-events: none; }
+.distance-ruler { position: absolute; top: 8px; bottom: 8px; right: 8px; width: 42px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; color: #d8f6ff; font: 700 9px ui-monospace, monospace; text-shadow: 0 1px 4px #000; pointer-events: none; }
+.distance-ruler::before { content: ""; position: absolute; top: 5px; bottom: 5px; right: 0; width: 1px; background: rgba(34, 211, 238, .65); }
+.distance-ruler span { position: relative; padding-right: 8px; }
+.distance-ruler span::after { content: ""; position: absolute; right: -1px; top: 50%; width: 6px; height: 1px; background: #67e8f9; }
 .lane-labels { position: absolute; left: 0; right: 0; top: 8px; display: grid; grid-template-columns: repeat(5, 1fr); pointer-events: none; }
 .lane-labels span { margin: auto; padding: 4px 9px; color: #d8f6ff; background: rgba(4, 12, 18, .68); border: 1px solid rgba(34, 211, 238, .4); font-size: 9px; letter-spacing: .12em; }
+.speed-proof { position: absolute; left: 14px; bottom: 14px; min-width: 310px; padding: 9px 12px; color: #d9faff; background: rgba(3, 12, 19, .82); border: 1px solid rgba(34, 211, 238, .62); border-left: 4px solid #22d3ee; box-shadow: 0 7px 24px rgba(0, 0, 0, .4); pointer-events: none; }
+.speed-proof > span { display: block; color: #6ee7f5; font-size: 8px; font-weight: 900; letter-spacing: .16em; }
+.speed-proof > strong { display: block; margin: 1px 0 4px; color: #f0fdff; font: 900 25px/1 ui-monospace, monospace; text-shadow: 0 0 14px rgba(34, 211, 238, .45); }
+.speed-proof > strong small { color: #8ba8b8; font-size: 10px; letter-spacing: .1em; }
+.speed-proof > div { display: flex; gap: 15px; color: #9fbbc9; font: 700 9px ui-monospace, monospace; }
+.web-running .speed-proof { border-color: #34d399; border-left-color: #34d399; }
+.web-running .speed-proof > span { color: #6ee7b7; }
 
 .bottom-grid { display: grid; grid-template-columns: 1.4fr .8fr; gap: 12px; min-height: 0; }
 .lane-panel, .roll-panel { min-height: 0; }
@@ -165,4 +183,3 @@ button:focus-visible, select:focus-visible { outline: 2px solid #22d3ee; outline
   .live-column { grid-template-rows: minmax(0, 1fr) 145px; gap: 8px; }
   .lane-grid { padding: 8px; }
 }
-

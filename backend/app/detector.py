@@ -147,9 +147,9 @@ class ReferenceDiffDetector:
         mask = cv2.dilate(mask, kernel, iterations=1)
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        rectangles = self._merge_rectangles([cv2.boundingRect(contour) for contour in contours])
         candidates: list[_Candidate] = []
-        for contour in contours:
-            x, y, w, h = cv2.boundingRect(contour)
+        for x, y, w, h in rectangles:
             changed_pixels = int(cv2.countNonZero(raw_mask[y : y + h, x : x + w]))
             if changed_pixels < self.config.detector.min_component_area_px:
                 continue
@@ -166,6 +166,43 @@ class ReferenceDiffDetector:
         self._cache_key = cache_key
         self._cache_value = detections
         return list(detections)
+
+    def _merge_rectangles(self, rectangles: list[tuple[int, int, int, int]]) -> list[tuple[int, int, int, int]]:
+        merged = list(rectangles)
+        changed = True
+        stride = self.config.lanes.width + self.config.lanes.gap
+        while changed:
+            changed = False
+            result: list[tuple[int, int, int, int]] = []
+            while merged:
+                current = merged.pop()
+                cx, cy, cw, ch = current
+                current_lane = min(self.config.lanes.count, (cx + cw // 2) // stride + 1)
+                for index, other in enumerate(merged):
+                    ox, oy, ow, oh = other
+                    other_lane = min(self.config.lanes.count, (ox + ow // 2) // stride + 1)
+                    if current_lane != other_lane:
+                        continue
+                    horizontal_gap = max(0, max(cx, ox) - min(cx + cw, ox + ow))
+                    vertical_gap = max(0, max(cy, oy) - min(cy + ch, oy + oh))
+                    if horizontal_gap > 64 or vertical_gap > 6:
+                        continue
+                    x0, y0 = min(cx, ox), min(cy, oy)
+                    x1, y1 = max(cx + cw, ox + ow), max(cy + ch, oy + oh)
+                    current = (x0, y0, x1 - x0, y1 - y0)
+                    merged.pop(index)
+                    merged.append(current)
+                    changed = True
+                    break
+                else:
+                    result.append(current)
+                    continue
+                break
+            if merged:
+                merged.extend(result)
+            else:
+                merged = result
+        return merged
 
     def _reference_frame(self, packet: FramePacket) -> np.ndarray:
         assert self.reference is not None
@@ -262,7 +299,7 @@ class ReferenceDiffDetector:
     def _classify(w: int, h: int, fill_ratio: float, mean_signed: float) -> str | None:
         if 10 <= w <= 38 and 10 <= h <= 38 and mean_signed > 12.0:
             return "pinhole"
-        if w <= 34 and h >= 22:
+        if w <= 50 and h >= 22 and h >= w * 1.4:
             return "streak"
         if w >= 180:
             if h < 16:
@@ -271,7 +308,7 @@ class ReferenceDiffDetector:
         if w >= 85 and h <= 85:
             if h < 10:
                 return None
-            return "contamination" if fill_ratio < 0.42 else "missing_ink"
+            return "missing_ink" if mean_signed > 8.0 or fill_ratio >= 0.42 else "contamination"
         if w >= 55 and fill_ratio < 0.5:
             return "contamination"
         if w >= 35 and h >= 18 and mean_signed < -8.0:

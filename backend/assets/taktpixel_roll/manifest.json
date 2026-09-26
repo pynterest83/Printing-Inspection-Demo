@@ -1,0 +1,171 @@
+{
+  "dataset": "Open Food Facts packaging artwork + Taktpixel2025PD-CD defects",
+  "background": {
+    "source": "Open Food Facts",
+    "product_code": "3017760038676",
+    "image": "front_fr.39.full.jpg",
+    "license": "CC-BY-SA-3.0",
+    "path": "/mnt/d/code/printing-inspection-demo/backend/assets/packaging/openfoodfacts_lulu.jpg"
+  },
+  "defects": {
+    "source": "Taktpixel2025PD-CD",
+    "doi": "10.5281/zenodo.15318946",
+    "license": "CC-BY-SA-4.0"
+  },
+  "width": 1920,
+  "height": 30000,
+  "pixels_per_meter": 40.0,
+  "noise": {
+    "mode": "taktpixel",
+    "noise_seed": 2025,
+    "gaussian_noise_sigma": 2.0,
+    "scanline_amplitude": 2.5,
+    "motion_blur_px": 3
+  },
+  "sources": [
+    {
+      "annotation_id": "DARK-001",
+      "type": "dark_spot",
+      "dataset_category": "blackspot",
+      "dataset_file": "blackspot_proofrog_a4pera_front_00002_0039.png",
+      "bbox": {
+        "x": 552,
+        "y": 1600,
+        "w": 44,
+        "h": 32
+      }
+    },
+    {
+      "annotation_id": "PIN-001",
+      "type": "pinhole",
+      "dataset_category": "pinhole",
+      "dataset_file": "pinhole_proofrog_a4pera_front_00014_0006.png",
+      "bbox": {
+        "x": 1718,
+        "y": 4000,
+        "w": 28,
+        "h": 20
+      }
+    },
+    {
+      "annotation_id": "INK-001",
+      "type": "missing_ink",
+      "dataset_category": "friction",
+      "dataset_file": "friction_taktpixel_tech_front_00017_0026.png",
+      "bbox": {
+        "x": 113,
+        "y": 7200,
+        "w": 150,
+        "h": 36
+      }
+    },
+    {
+      "annotation_id": "COLOR-001",
+      "type": "color_shift",
+      "dataset_category": "colorshift",
+      "dataset_file": "colorshift_taktpixel_tech_back_00007_0075.png",
+      "bbox": {
+        "x": 845,
+        "y": 10800,
+        "w": 230,
+        "h": 480
+      }
+    },
+    {
+      "annotation_id": "HAIR-001",
+      "type": "contamination",
+      "dataset_category": "hair",
+      "dataset_file": "hair_proofrog_a4pera_back_00013_0004.png",
+      "bbox": {
+        "x": 1291,
+        "y": 14400,
+        "w": 110,
+        "h": 48
+      }
+    },
+    {
+      "annotation_id": "LINE-001",
+      "type": "streak",
+      "dataset_category": "line",
+      "dataset_file": "line_taktpixel_tech_back_00023_0046.png",
+      "bbox": {
+        "x": 1336,
+        "y": 18000,
+        "w": 20,
+        "h": 60
+      }
+    },
+    {
+      "annotation_id": "MULTI-001",
+      "type": "dark_spot",
+      "dataset_category": "blackspot",
+      "dataset_file": "blackspot_taktpixel_tech_back_00021_0033.png",
+      "bbox": {
+        "x": 555,
+        "y": 20800,
+        "w": 38,
+        "h": 28
+      }
+    },
+    {
+      "annotation_id": "MULTI-002",
+      "type": "dark_spot",
+      "dataset_category": "blackspot",
+      "dataset_file": "blackspot_taktpixel_tech_back_00020_0042.png",
+      "bbox": {
+        "x": 555,
+        "y": 20880,
+        "w": 38,
+        "h": 28
+      }
+    },
+    {
+      "annotation_id": "MULTI-003",
+      "type": "dark_spot",
+      "dataset_category": "blackspot",
+      "dataset_file": "blackspot_proofrog_kakaku_00002_0001.png",
+      "bbox": {
+        "x": 555,
+        "y": 20960,
+        "w": 38,
+        "h": 28
+      }
+    },
+    {
+      "annotation_id": "MULTI-004",
+      "type": "dark_spot",
+      "dataset_category": "blackspot",
+      "dataset_file": "blackspot_taktpixel_tech_front_00013_0004.png",
+      "bbox": {
+        "x": 555,
+        "y": 21040,
+        "w": 38,
+        "h": 28
+      }
+    },
+    {
+      "annotation_id": "MULTI-005",
+      "type": "dark_spot",
+      "dataset_category": "blackspot",
+      "dataset_file": "blackspot_taktpixel_tech_back_00011_0000.png",
+      "bbox": {
+        "x": 555,
+        "y": 21120,
+        "w": 38,
+        "h": 28
+      }
+    },
+    {
+      "annotation_id": "LINE-STOP",
+      "type": "streak",
+      "dataset_category": "line",
+      "dataset_file": "line_taktpixel_tech_back_00023_0046.png",
+      "bbox": {
+        "x": 1334,
+        "y": 24000,
+        "w": 24,
+        "h": 160
+      }
+    }
+  ]
+}

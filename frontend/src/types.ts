@@ -25,12 +25,33 @@ export interface RollSummary {
 
 export interface InspectionStatus {
   machine_status: MachineStatus;
+  detector_mode?: string;
+  dataset_mode?: string;
   speed_m_min: number;
   position_m: number;
   frame_id: number;
   roll: RollSummary;
   lanes: Array<{ lane_id: number; status: "OK" | "NG" }>;
   alarm: Alarm;
+  performance?: {
+    target_speed_m_min: number;
+    measured_speed_m_min: number;
+    target_input_fps: number;
+    input_fps: number;
+    processed_fps: number;
+    processing_avg_ms: number;
+    processing_p95_ms: number;
+    dropped_frames: number;
+    deadline_misses: number;
+    queue_depth: number;
+    source_lines_per_second: number;
+    processing_window_m: number;
+    processing_height_px: number;
+    display_window_m: number;
+    stream_fps: number;
+    stream_width: number;
+    stream_height: number;
+  };
 }
 
 export interface Defect {
@@ -64,4 +85,3 @@ export interface Page<T> {
   limit: number;
   offset: number;
 }
-

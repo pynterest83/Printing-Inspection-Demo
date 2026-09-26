@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from .config import load_config
 from .engine import InspectionEngine, InvalidTransition
@@ -60,6 +61,25 @@ def live_frame(request: Request) -> Response:
         content=frame,
         media_type="image/jpeg",
         headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )
+
+
+@app.get("/api/live/stream.mjpg")
+def live_stream(request: Request) -> StreamingResponse:
+    engine = get_engine(request)
+
+    def frames():
+        period = 1.0 / engine.config.frame.jpeg_fps
+        while engine.ready:
+            frame = engine.frame_bytes()
+            if frame is not None:
+                yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(frame)).encode() + b"\r\n\r\n" + frame + b"\r\n"
+            time.sleep(period)
+
+    return StreamingResponse(
+        frames(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "X-Accel-Buffering": "no"},
     )
 
 
@@ -143,4 +163,3 @@ async def inspection_socket(websocket: WebSocket) -> None:
             await asyncio.sleep(1.0 / engine.config.telemetry.hz)
     except (WebSocketDisconnect, RuntimeError):
         return
-

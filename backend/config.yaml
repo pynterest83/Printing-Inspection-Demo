@@ -1,14 +1,18 @@
 machine:
   min_speed_m_min: 200.0
   max_speed_m_min: 300.0
-  initial_speed_m_min: 200.0
+  initial_speed_m_min: 300.0
+  speed_mode: fixed
+  fixed_speed_m_min: 300.0
 
 frame:
   width: 1920
   height: 600
   engine_fps: 30
-  jpeg_fps: 8
-  jpeg_quality: 82
+  jpeg_fps: 12
+  jpeg_quality: 68
+  stream_width: 960
+  stream_height: 300
 
 master_roll:
   width: 1920
@@ -39,12 +43,26 @@ demo:
 detector:
   # reference_diff reads pixels only. mock remains available for comparison/debugging.
   mode: reference_diff
-  difference_threshold: 24
+  difference_threshold: 16
   min_component_area_px: 24
   morphology_kernel_px: 3
   registration_enabled: true
   registration_scale: 0.25
   registration_max_shift_px: 8.0
+  # At 300 m/min this is a 0.4 s classification window. The recorded
+  # position remains the first observed physical position.
+  event_confirmation_m: 2.0
+  # Only the newest part of the rolling web is inspected each cycle. The
+  # 15 m frame is retained for HMI history and is not reprocessed at 30 FPS.
+  processing_window_m: 4.0
+
+dataset:
+  mode: taktpixel
+  assets_directory: assets/taktpixel_roll
+  noise_seed: 2025
+  gaussian_noise_sigma: 2.0
+  scanline_amplitude: 2.5
+  motion_blur_px: 3
 
 storage:
   directory: data

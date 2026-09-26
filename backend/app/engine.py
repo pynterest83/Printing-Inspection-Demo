@@ -5,6 +5,7 @@ import threading
 import time
 import uuid
 from collections import defaultdict, deque
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 
@@ -13,7 +14,7 @@ import cv2
 from .config import AppConfig
 from .database import Database
 from .detector import MockDetector, ReferenceDiffDetector
-from .models import AlarmLevel, Detection, MachineStatus, iso_utc, utc_now
+from .models import AlarmLevel, BBox, Detection, MachineStatus, iso_utc, utc_now
 from .scenario import ensure_synthetic_assets
 from .source import MockImageSource
 
@@ -99,6 +100,13 @@ class InspectionEngine:
         self.events: deque[dict[str, Any]] = deque(maxlen=1000)
         self.last_checkpoint = 0.0
         self.last_jpeg_at = 0.0
+        self.last_rendered_frame_id = -1
+        self.performance_started_at = time.monotonic()
+        self.performance_frame_times: deque[float] = deque(maxlen=config.frame.engine_fps * 10)
+        self.performance_position_samples: deque[tuple[float, float]] = deque(maxlen=config.frame.engine_fps * 10)
+        self.processing_samples_ms: deque[float] = deque(maxlen=config.frame.engine_fps * 10)
+        self.dropped_frames = 0
+        self.deadline_misses = 0
 
     def start_background(self) -> None:
         self.source.start()
@@ -187,6 +195,7 @@ class InspectionEngine:
             return {
                 "machine_status": self.machine_status.value,
                 "detector_mode": self.config.detector.mode,
+                "dataset_mode": self.config.dataset.mode,
                 "speed_m_min": round(self.speed_m_min if self.machine_status == MachineStatus.RUNNING else 0.0, 1),
                 "position_m": round(self.position_m, 3),
                 "frame_id": self.frame_id,
@@ -200,6 +209,7 @@ class InspectionEngine:
                 },
                 "lanes": lanes,
                 "alarm": dict(self.alarm),
+                "performance": self._performance_snapshot(),
             }
 
     def snapshot_envelope(self) -> dict[str, Any]:
@@ -247,7 +257,13 @@ class InspectionEngine:
                 with self.lock:
                     if self.machine_status == MachineStatus.RUNNING:
                         self._advance(dt, now_tick)
-                    if now_tick - self.last_jpeg_at >= 1.0 / self.config.frame.jpeg_fps:
+                    render_due = now_tick - self.last_jpeg_at >= 1.0 / self.config.frame.jpeg_fps
+                    frame_changed = self.frame_id != self.last_rendered_frame_id
+                    if (
+                        self.machine_status == MachineStatus.RUNNING and render_due
+                    ) or (
+                        self.machine_status != MachineStatus.RUNNING and frame_changed
+                    ):
                         self._render_frame(now_tick)
                     if now_tick - self.last_checkpoint >= 1.0:
                         self._checkpoint(utc_now())
@@ -256,22 +272,34 @@ class InspectionEngine:
             self.ready = False
 
     def _advance(self, dt: float, monotonic_now: float) -> None:
+        processing_started = time.perf_counter()
         previous_position = self.position_m
         self.running_elapsed += dt
-        self.speed_m_min = max(
-            self.config.machine.min_speed_m_min,
-            min(self.config.machine.max_speed_m_min, speed_for_elapsed(self.running_elapsed)),
-        )
+        if self.config.machine.speed_mode == "fixed":
+            self.speed_m_min = self.config.machine.fixed_speed_m_min
+        else:
+            self.speed_m_min = max(
+                self.config.machine.min_speed_m_min,
+                min(self.config.machine.max_speed_m_min, speed_for_elapsed(self.running_elapsed)),
+            )
         movement = distance_for(self.speed_m_min, dt)
         self.position_m = min(self.config.master_roll.length_m, previous_position + movement)
         self.frame_id += 1
 
+        processing_height = min(
+            self.config.frame.height,
+            math.ceil(
+                self.config.detector.processing_window_m
+                * self.config.master_roll.pixels_per_meter
+            ),
+        )
         packet = self.source.read(
             frame_id=self.frame_id,
             captured_at=utc_now(),
             roll_id=self.roll_id,
             position_m=self.position_m,
             loop_no=self.roll_no,
+            frame_height=processing_height,
         )
         detections = self.detector.detect(packet)
         self.current_detections = detections
@@ -282,13 +310,23 @@ class InspectionEngine:
                 start, end = min(start, known[0]), max(end, known[1])
             self.detected_intervals[detection.annotation_id] = (start, end)
             self.detected_tracks[detection.annotation_id] = detection
-            if detection.annotation_id not in self.emitted and detection.absolute_position_m <= self.position_m:
+            confirmation_position = detection.absolute_position_m + self.config.detector.event_confirmation_m
+            if detection.annotation_id not in self.emitted and confirmation_position <= self.position_m:
                 self._emit_defect(detection, monotonic_now)
 
         discovered_bad = merge_intervals(list(self.detected_intervals.values()))
         self.bad_m = overlap_length(0.0, self.position_m, discovered_bad)
 
         self._evaluate_alarm(detections)
+        processing_ms = (time.perf_counter() - processing_started) * 1000.0
+        frame_period = 1.0 / self.config.frame.engine_fps
+        if dt > frame_period * 1.5:
+            self.dropped_frames += max(1, round(dt / frame_period) - 1)
+        if processing_ms > frame_period * 1000.0:
+            self.deadline_misses += 1
+        self.performance_frame_times.append(monotonic_now)
+        self.performance_position_samples.append((monotonic_now, self.position_m))
+        self.processing_samples_ms.append(processing_ms)
         if self.position_m >= self.config.master_roll.length_m and self.machine_status == MachineStatus.RUNNING:
             now = utc_now()
             self.database.update_roll(
@@ -311,9 +349,25 @@ class InspectionEngine:
             position_m=self.position_m,
             loop_no=self.roll_no,
         )
-        detections = self.detector.detect(packet)
-        self.current_detections = detections
         frame = packet.image
+        viewport_top = packet.viewport_top_px
+        viewport_bottom = viewport_top + frame.shape[0]
+        detections: list[Detection] = []
+        for tracked in self.detected_tracks.values():
+            source_box = tracked.source_bbox
+            if source_box.y >= viewport_bottom or source_box.y + source_box.h <= viewport_top:
+                continue
+            detections.append(
+                replace(
+                    tracked,
+                    frame_bbox=BBox(
+                        x=source_box.x,
+                        y=source_box.y - viewport_top,
+                        w=source_box.w,
+                        h=source_box.h,
+                    ),
+                )
+            )
         for lane in range(1, self.config.lanes.count):
             x = lane * self.config.lanes.width + (lane - 1) * self.config.lanes.gap + self.config.lanes.gap // 2
             cv2.line(frame, (x, 0), (x, frame.shape[0]), (18, 25, 32), 3)
@@ -321,14 +375,20 @@ class InspectionEngine:
             self._draw_detection(frame, detection)
         if self.position_m <= 0.001:
             cv2.putText(frame, "ROLL READY - PRESS START", (570, 320), cv2.FONT_HERSHEY_DUPLEX, 1.2, (80, 220, 255), 3, cv2.LINE_AA)
+        stream_frame = cv2.resize(
+            frame,
+            (self.config.frame.stream_width, self.config.frame.stream_height),
+            interpolation=cv2.INTER_AREA,
+        )
         ok, encoded = cv2.imencode(
             ".jpg",
-            frame,
+            stream_frame,
             [cv2.IMWRITE_JPEG_QUALITY, self.config.frame.jpeg_quality],
         )
         if ok:
             self.latest_jpeg = encoded.tobytes()
             self.last_jpeg_at = monotonic_now
+            self.last_rendered_frame_id = self.frame_id
 
     @staticmethod
     def _draw_detection(frame: Any, detection: Detection) -> None:
@@ -474,6 +534,51 @@ class InspectionEngine:
             stop_reason=self.alarm["message"] if self.machine_status == MachineStatus.PLC_STOP else None,
         )
 
+    def _performance_snapshot(self) -> dict[str, Any]:
+        frame_times = list(self.performance_frame_times)
+        position_samples = list(self.performance_position_samples)
+        processing = sorted(self.processing_samples_ms)
+        input_fps = 0.0
+        measured_speed = 0.0
+        if len(frame_times) >= 2 and frame_times[-1] > frame_times[0]:
+            input_fps = (len(frame_times) - 1) / (frame_times[-1] - frame_times[0])
+        if len(position_samples) >= 2 and position_samples[-1][0] > position_samples[0][0]:
+            delta_seconds = position_samples[-1][0] - position_samples[0][0]
+            measured_speed = (position_samples[-1][1] - position_samples[0][1]) / delta_seconds * 60.0
+        p95 = 0.0
+        average = 0.0
+        if processing:
+            average = sum(processing) / len(processing)
+            p95 = processing[min(len(processing) - 1, math.ceil(len(processing) * 0.95) - 1)]
+        return {
+            "target_speed_m_min": self.config.machine.fixed_speed_m_min,
+            "measured_speed_m_min": round(measured_speed, 2),
+            "target_input_fps": self.config.frame.engine_fps,
+            "input_fps": round(input_fps, 2),
+            "processed_fps": round(input_fps, 2),
+            "processing_avg_ms": round(average, 2),
+            "processing_p95_ms": round(p95, 2),
+            "dropped_frames": self.dropped_frames,
+            "deadline_misses": self.deadline_misses,
+            "queue_depth": 0,
+            "source_lines_per_second": round(
+                self.config.machine.fixed_speed_m_min
+                / 60.0
+                * self.config.master_roll.pixels_per_meter,
+                1,
+            ),
+            "processing_window_m": self.config.detector.processing_window_m,
+            "processing_height_px": math.ceil(
+                self.config.detector.processing_window_m
+                * self.config.master_roll.pixels_per_meter
+            ),
+            "display_window_m": self.config.frame.height
+            / self.config.master_roll.pixels_per_meter,
+            "stream_fps": self.config.frame.jpeg_fps,
+            "stream_width": self.config.frame.stream_width,
+            "stream_height": self.config.frame.stream_height,
+        }
+
     def _reset_roll(self, status: MachineStatus, now: datetime) -> None:
         self.roll_no += 1
         self.roll_id = self._make_roll_id()
@@ -483,6 +588,7 @@ class InspectionEngine:
         self.speed_m_min = self.config.machine.initial_speed_m_min
         self.running_elapsed = 0.0
         self.frame_id = 0
+        self.last_rendered_frame_id = -1
         self.emitted.clear()
         self.detected_intervals.clear()
         self.detected_tracks.clear()
@@ -490,6 +596,12 @@ class InspectionEngine:
         self.defect_positions.clear()
         self.lane_hold_until.clear()
         self.consecutive_triggered = False
+        self.performance_started_at = time.monotonic()
+        self.performance_frame_times.clear()
+        self.performance_position_samples.clear()
+        self.processing_samples_ms.clear()
+        self.dropped_frames = 0
+        self.deadline_misses = 0
         self.alarm_latched = False
         self.alarm = self._normal_alarm()
         self.database.create_roll(self.roll_id, status.value, now)

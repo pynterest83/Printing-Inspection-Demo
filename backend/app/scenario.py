@@ -69,34 +69,45 @@ def ensure_synthetic_assets(config: AppConfig) -> tuple[Path, Path, list[DefectT
     roll_dir.mkdir(parents=True, exist_ok=True)
     annotations_dir.mkdir(parents=True, exist_ok=True)
     thumbnails_dir.mkdir(parents=True, exist_ok=True)
-    reference_path = roll_dir / "reference_roll.jpg"
-    inspection_path = roll_dir / "inspection_roll.jpg"
     annotation_path = annotations_dir / "annotations.json"
-    signature_path = roll_dir / "signature.json"
-    signature = {
-        "width": config.master_roll.width,
-        "height": config.master_roll.height,
-        "ppm": config.master_roll.pixels_per_meter,
-        "seed": config.demo.seed,
-        "generator_version": 3,
-    }
     templates = default_scenario(config)
-    existing_signature = None
-    if signature_path.exists():
-        try:
-            existing_signature = json.loads(signature_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            pass
-    if not reference_path.exists() or not inspection_path.exists() or existing_signature != signature:
-        reference = _build_clean_roll(config)
-        if not cv2.imwrite(str(reference_path), reference, [cv2.IMWRITE_JPEG_QUALITY, 95]):
-            raise RuntimeError(f"Unable to write clean reference roll to {reference_path}")
-        inspection = reference.copy()
-        for defect in templates:
-            _draw_defect(inspection, defect)
-        if not cv2.imwrite(str(inspection_path), inspection, [cv2.IMWRITE_JPEG_QUALITY, 95]):
-            raise RuntimeError(f"Unable to write synthetic inspection roll to {inspection_path}")
-        signature_path.write_text(json.dumps(signature, indent=2), encoding="utf-8")
+    if config.dataset.mode == "taktpixel":
+        reference_path = config.dataset.assets_path / "reference_roll.jpg"
+        inspection_path = config.dataset.assets_path / "inspection_roll.jpg"
+        missing = [str(path) for path in (reference_path, inspection_path) if not path.exists()]
+        if missing:
+            raise RuntimeError(
+                "Prepared Taktpixel assets are missing: "
+                + ", ".join(missing)
+                + ". Run backend/scripts/prepare_taktpixel.py first."
+            )
+    else:
+        reference_path = roll_dir / "reference_roll.jpg"
+        inspection_path = roll_dir / "inspection_roll.jpg"
+        signature_path = roll_dir / "signature.json"
+        signature = {
+            "width": config.master_roll.width,
+            "height": config.master_roll.height,
+            "ppm": config.master_roll.pixels_per_meter,
+            "seed": config.demo.seed,
+            "generator_version": 3,
+        }
+        existing_signature = None
+        if signature_path.exists():
+            try:
+                existing_signature = json.loads(signature_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                pass
+        if not reference_path.exists() or not inspection_path.exists() or existing_signature != signature:
+            reference = _build_clean_roll(config)
+            if not cv2.imwrite(str(reference_path), reference, [cv2.IMWRITE_JPEG_QUALITY, 95]):
+                raise RuntimeError(f"Unable to write clean reference roll to {reference_path}")
+            inspection = reference.copy()
+            for defect in templates:
+                _draw_defect(inspection, defect)
+            if not cv2.imwrite(str(inspection_path), inspection, [cv2.IMWRITE_JPEG_QUALITY, 95]):
+                raise RuntimeError(f"Unable to write synthetic inspection roll to {inspection_path}")
+            signature_path.write_text(json.dumps(signature, indent=2), encoding="utf-8")
     annotation_path.write_text(
         json.dumps(
             {

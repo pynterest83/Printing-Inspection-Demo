@@ -13,6 +13,10 @@ def test_240_m_per_minute_for_ten_seconds_is_40_metres():
     assert distance_for(240.0, 10.0) == pytest.approx(40.0)
 
 
+def test_300_m_per_minute_for_ten_seconds_is_50_metres():
+    assert distance_for(300.0, 10.0) == pytest.approx(50.0)
+
+
 def test_speed_schedule_is_bounded_and_deterministic():
     values = [speed_for_elapsed(second) for second in range(0, 240)]
     assert min(values) >= 199.0

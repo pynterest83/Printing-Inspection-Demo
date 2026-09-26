@@ -11,15 +11,27 @@ from pydantic import BaseModel, Field, model_validator
 class MachineConfig(BaseModel):
     min_speed_m_min: float = 200.0
     max_speed_m_min: float = 300.0
-    initial_speed_m_min: float = 200.0
+    initial_speed_m_min: float = 300.0
+    speed_mode: str = "fixed"
+    fixed_speed_m_min: float = 300.0
+
+    @model_validator(mode="after")
+    def validate_speed(self) -> "MachineConfig":
+        if self.speed_mode not in {"fixed", "scenario"}:
+            raise ValueError("machine.speed_mode must be 'fixed' or 'scenario'")
+        if not self.min_speed_m_min <= self.fixed_speed_m_min <= self.max_speed_m_min:
+            raise ValueError("fixed_speed_m_min must be within machine speed limits")
+        return self
 
 
 class FrameConfig(BaseModel):
     width: int = 1920
     height: int = 600
     engine_fps: int = 30
-    jpeg_fps: int = 8
-    jpeg_quality: int = 82
+    jpeg_fps: int = 12
+    jpeg_quality: int = 68
+    stream_width: int = 960
+    stream_height: int = 300
 
 
 class MasterRollConfig(BaseModel):
@@ -62,12 +74,14 @@ class DemoConfig(BaseModel):
 
 class DetectorConfig(BaseModel):
     mode: str = "reference_diff"
-    difference_threshold: int = 24
+    difference_threshold: int = 16
     min_component_area_px: int = 24
     morphology_kernel_px: int = 3
     registration_enabled: bool = True
     registration_scale: float = 0.25
     registration_max_shift_px: float = 8.0
+    event_confirmation_m: float = 2.0
+    processing_window_m: float = 4.0
 
     @model_validator(mode="after")
     def validate_detector(self) -> "DetectorConfig":
@@ -79,7 +93,33 @@ class DetectorConfig(BaseModel):
             raise ValueError("detector.morphology_kernel_px must be a positive odd number")
         if not 0.05 <= self.registration_scale <= 1.0:
             raise ValueError("detector.registration_scale must be between 0.05 and 1.0")
+        if self.event_confirmation_m < 0:
+            raise ValueError("detector.event_confirmation_m cannot be negative")
+        if self.processing_window_m < self.event_confirmation_m:
+            raise ValueError("detector.processing_window_m must cover event_confirmation_m")
         return self
+
+
+class DatasetConfig(BaseModel):
+    mode: str = "taktpixel"
+    assets_directory: str = "assets/taktpixel_roll"
+    noise_seed: int = 2025
+    gaussian_noise_sigma: float = 2.0
+    scanline_amplitude: float = 2.5
+    motion_blur_px: int = 3
+
+    @model_validator(mode="after")
+    def validate_dataset(self) -> "DatasetConfig":
+        if self.mode not in {"taktpixel", "procedural"}:
+            raise ValueError("dataset.mode must be 'taktpixel' or 'procedural'")
+        if self.motion_blur_px < 1 or self.motion_blur_px % 2 == 0:
+            raise ValueError("dataset.motion_blur_px must be a positive odd number")
+        return self
+
+    @property
+    def assets_path(self) -> Path:
+        path = Path(self.assets_directory)
+        return path if path.is_absolute() else backend_root() / path
 
 
 class StorageConfig(BaseModel):
@@ -95,6 +135,7 @@ class AppConfig(BaseModel):
     alarm: AlarmConfig = Field(default_factory=AlarmConfig)
     demo: DemoConfig = Field(default_factory=DemoConfig)
     detector: DetectorConfig = Field(default_factory=DetectorConfig)
+    dataset: DatasetConfig = Field(default_factory=DatasetConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
 
     @model_validator(mode="after")
@@ -104,6 +145,8 @@ class AppConfig(BaseModel):
             raise ValueError("lane widths and gaps must exactly fill frame/master width")
         if self.frame.height >= self.master_roll.height:
             raise ValueError("frame height must be smaller than master roll height")
+        if self.frame.stream_width < 320 or self.frame.stream_height < 100:
+            raise ValueError("stream dimensions are too small")
         return self
 
     @property

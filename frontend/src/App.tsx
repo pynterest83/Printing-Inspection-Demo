@@ -48,14 +48,8 @@ function App() {
     refreshDefects,
     setSelectedDefect,
   } = useInspection();
-  const [frameToken, setFrameToken] = useState(0);
   const [tab, setTab] = useState<"current" | "history">("current");
   const [rollFilter, setRollFilter] = useState("");
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setFrameToken((value) => value + 1), 125);
-    return () => window.clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     if (tab === "history") void refreshDefects(rollFilter || undefined);
@@ -64,6 +58,21 @@ function App() {
 
   const machine = status?.machine_status ?? "IDLE";
   const alarm = status?.alarm;
+  const position = status?.position_m ?? 0;
+  const speedMMin = status?.speed_m_min ?? 0;
+  const speedMps = speedMMin / 60;
+  const displayWindowM = status?.performance?.display_window_m ?? 15;
+  const encoderTicks = useMemo(() => {
+    const first = Math.max(0, Math.ceil(position - displayWindowM));
+    const last = Math.floor(position);
+    return Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => {
+      const metre = first + index;
+      return {
+        metre,
+        bottom: ((position - metre) / displayWindowM) * 100,
+      };
+    });
+  }, [displayWindowM, position]);
   const displayedDefects = useMemo(() => {
     const activeRoll = status?.roll.roll_id;
     return defects
@@ -90,7 +99,7 @@ function App() {
           <div><span>MACHINE STATUS</span><strong>{machine.replace("_", " ")}</strong></div>
         </div>
         <div className="header-metrics">
-          <Metric label="SPEED" value={number.format(status?.speed_m_min ?? 0)} unit="m/min" />
+          <Metric label="SPEED" value={number.format(speedMMin)} unit={`m/min · ${number.format(speedMps)} m/s`} />
           <Metric label="POSITION" value={number.format(status?.position_m ?? 0)} unit="m" />
           <Metric label="TOTAL" value={number.format(status?.roll.total_m ?? 0)} unit="m" />
           <Metric label="GOOD" value={number.format(status?.roll.good_m ?? 0)} unit="m" tone="good" />
@@ -119,15 +128,28 @@ function App() {
           <div className="panel live-panel">
             <div className="panel-title">
               <div><i className="live-dot" /><span>LIVE WEB VIEW</span></div>
-              <div className="feed-meta"><span>1920 × 600</span><b>{connected ? "LIVE" : "RECONNECTING"}</b></div>
+              <div className="feed-meta"><span>CV ROI 1920 × 160 · ECO STREAM 960 × 300 · 200 LINES/S</span><b>{connected ? "LIVE" : "RECONNECTING"}</b></div>
             </div>
-            <div className="live-frame-wrap">
-              <img className="live-frame" src={`/api/live/frame.jpg?v=${frameToken}`} alt="Live inspection" />
+            <div className={`live-frame-wrap ${machine === "RUNNING" ? "web-running" : ""}`}>
+              <img className="live-frame" src="/api/live/stream.mjpg" alt="Live inspection" />
+              <div className="encoder-grid" aria-hidden="true">
+                {encoderTicks.map((tick) => (
+                  <span key={tick.metre} style={{ bottom: `${tick.bottom}%` }}>
+                    {tick.metre % 5 === 0 && <b>{tick.metre} m</b>}
+                  </span>
+                ))}
+              </div>
               <div className="scanline" />
+              <div className="distance-ruler"><span>15 m</span><span>10 m</span><span>5 m</span><span>0 m</span></div>
               <div className="lane-labels">
                 {(status?.lanes ?? Array.from({ length: 5 }, (_, index) => ({ lane_id: index + 1, status: "OK" as const }))).map((lane) => (
                   <span key={lane.lane_id}>LANE {lane.lane_id}</span>
                 ))}
+              </div>
+              <div className="speed-proof">
+                <span>ENCODER-CALIBRATED WEB SPEED</span>
+                <strong>{number.format(speedMMin)} <small>M/MIN</small></strong>
+                <div><b>{number.format(speedMps)} M/S</b><b>{number.format(speedMps * 10)} M / 10 S</b><b>{number.format(speedMps * 40)} LINES/S</b></div>
               </div>
             </div>
           </div>
@@ -168,7 +190,10 @@ function App() {
             {displayedDefects.map((defect) => <DefectCard key={defect.id} defect={defect} onClick={() => setSelectedDefect(defect)} />)}
             {displayedDefects.length === 0 && <div className="empty-state"><i>✓</i><strong>NO DEFECTS RECORDED</strong><span>Inspection events will appear here.</span></div>}
           </div>
-          <footer className="system-footer"><i className={connected ? "online" : "offline"} /> API {connected ? "CONNECTED" : "OFFLINE"}<span>ENGINE FRAME {status?.frame_id ?? 0}</span></footer>
+          <footer className="system-footer">
+            <i className={connected ? "online" : "offline"} /> API {connected ? "CONNECTED" : "OFFLINE"}
+            <span>ROI {number.format(status?.performance?.processing_window_m ?? 4)} M · IN {number.format(status?.performance?.input_fps ?? 0)} FPS · P95 {number.format(status?.performance?.processing_p95_ms ?? 0)} MS · DROP {status?.performance?.dropped_frames ?? 0}</span>
+          </footer>
         </aside>
       </section>
 

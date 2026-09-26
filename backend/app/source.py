@@ -24,6 +24,7 @@ class ImageSource(Protocol):
         roll_id: str,
         position_m: float,
         loop_no: int,
+        frame_height: int | None = None,
     ) -> FramePacket: ...
 
 
@@ -52,21 +53,22 @@ class MockImageSource:
         roll_id: str,
         position_m: float,
         loop_no: int,
+        frame_height: int | None = None,
     ) -> FramePacket:
         if self.image is None:
             raise RuntimeError("Image source has not been started")
         ppm = self.config.master_roll.pixels_per_meter
-        frame_height = self.config.frame.height
+        requested_height = frame_height or self.config.frame.height
         bottom_px = min(round(position_m * ppm), self.config.master_roll.height)
-        top_px = bottom_px - frame_height
+        top_px = bottom_px - requested_height
         if top_px >= 0:
             frame = self.image[top_px:bottom_px].copy()
         else:
-            frame = np.full((frame_height, self.config.frame.width, 3), (18, 23, 29), dtype=np.uint8)
+            frame = np.full((requested_height, self.config.frame.width, 3), (18, 23, 29), dtype=np.uint8)
             if bottom_px > 0:
                 frame[-bottom_px:] = self.image[:bottom_px]
-        if frame.shape[0] != frame_height:
-            padded = np.full((frame_height, self.config.frame.width, 3), (18, 23, 29), dtype=np.uint8)
+        if frame.shape[0] != requested_height:
+            padded = np.full((requested_height, self.config.frame.width, 3), (18, 23, 29), dtype=np.uint8)
             padded[-frame.shape[0] :] = frame
             frame = padded
         return FramePacket(
@@ -75,7 +77,7 @@ class MockImageSource:
             roll_id=roll_id,
             image=frame,
             position_m=position_m,
-            viewport_start_m=max(0.0, position_m - frame_height / ppm),
+            viewport_start_m=max(0.0, position_m - requested_height / ppm),
             viewport_end_m=position_m,
             loop_no=loop_no,
             viewport_top_px=top_px,
