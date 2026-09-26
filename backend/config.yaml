@@ -1,0 +1,50 @@
+machine:
+  min_speed_m_min: 200.0
+  max_speed_m_min: 300.0
+  initial_speed_m_min: 200.0
+
+frame:
+  width: 1920
+  height: 600
+  engine_fps: 30
+  jpeg_fps: 8
+  jpeg_quality: 82
+
+master_roll:
+  width: 1920
+  height: 30000
+  length_m: 750.0
+  pixels_per_meter: 40.0
+
+lanes:
+  count: 5
+  width: 376
+  gap: 10
+
+telemetry:
+  hz: 10
+
+alarm:
+  consecutive_defects: 5
+  consecutive_window_m: 10.0
+  continuous_warning_m: 1.0
+  continuous_stop_m: 3.0
+  bad_ratio_warning_percent: 3.0
+  bad_ratio_min_length_m: 50.0
+
+demo:
+  seed: 42
+  lane_status_hold_seconds: 1.5
+
+detector:
+  # reference_diff reads pixels only. mock remains available for comparison/debugging.
+  mode: reference_diff
+  difference_threshold: 24
+  min_component_area_px: 24
+  morphology_kernel_px: 3
+  registration_enabled: true
+  registration_scale: 0.25
+  registration_max_shift_px: 8.0
+
+storage:
+  directory: data
